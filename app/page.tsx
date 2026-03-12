@@ -1,65 +1,290 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useMemo } from "react";
+import { artists, formatNumber } from "@/lib/data";
+import { Genre, SubGenre, PostCategory, FeedItem, TrackDiscussionPost, CommunityPost } from "@/lib/types";
+import { useFeed } from "@/lib/FeedContext";
+import TrackDiscussionCard from "@/components/TrackDiscussionCard";
+import CommunityPostCard from "@/components/CommunityPostCard";
+import FeedFilter, { PostTypeTab } from "@/components/FeedFilter";
+import Link from "next/link";
+
+const SORT_OPTIONS = ["Recent", "Most Liked", "Most Discussed"] as const;
+type SortOption = (typeof SORT_OPTIONS)[number];
+
+export default function HomePage() {
+  const { posts } = useFeed();
+
+  const [postTypeTab, setPostTypeTab] = useState<PostTypeTab>("all");
+  const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
+  const [selectedSubGenres, setSelectedSubGenres] = useState<SubGenre[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<PostCategory[]>([]);
+  const [sort, setSort] = useState<SortOption>("Recent");
+  const [showMobileFilter, setShowMobileFilter] = useState(false);
+
+  function toggleGenre(g: Genre) {
+    setSelectedGenres((p) => (p.includes(g) ? p.filter((x) => x !== g) : [...p, g]));
+  }
+  function toggleSubGenre(sg: SubGenre) {
+    setSelectedSubGenres((p) => (p.includes(sg) ? p.filter((x) => x !== sg) : [...p, sg]));
+  }
+  function toggleCategory(c: PostCategory) {
+    setSelectedCategories((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c]));
+  }
+  function clearFilters() {
+    setSelectedGenres([]);
+    setSelectedSubGenres([]);
+    setSelectedCategories([]);
+  }
+
+  const filteredPosts = useMemo(() => {
+    let result = [...posts];
+
+    // Filter by post type tab
+    if (postTypeTab === "track") {
+      result = result.filter((p): p is TrackDiscussionPost => p.type === "track");
+    } else if (postTypeTab === "community") {
+      result = result.filter((p): p is CommunityPost => p.type === "community");
+    }
+
+    // Filter track posts by genre/sub-genre
+    if (selectedGenres.length > 0 || selectedSubGenres.length > 0) {
+      result = result.filter((p) => {
+        if (p.type === "track") {
+          const genreMatch = selectedGenres.length === 0 || selectedGenres.includes(p.genre);
+          const subGenreMatch =
+            selectedSubGenres.length === 0 ||
+            (p.subGenre !== undefined && selectedSubGenres.includes(p.subGenre));
+          return genreMatch && subGenreMatch;
+        }
+        // For community posts, match against their genres array if genre filter active
+        if (p.type === "community" && selectedGenres.length > 0) {
+          return p.genres.some((g) => selectedGenres.includes(g));
+        }
+        return true;
+      });
+    }
+
+    // Filter community posts by category
+    if (selectedCategories.length > 0) {
+      result = result.filter((p) => {
+        if (p.type === "community") return selectedCategories.includes(p.category);
+        return true; // track posts pass through category filter
+      });
+    }
+
+    // Sort (pinned always first)
+    const pinned = result.filter((p) => (p.type === "community" && p.pinned) || (p.type === "track" && p.pinned));
+    const rest = result.filter((p) => !((p.type === "community" && p.pinned) || (p.type === "track" && p.pinned)));
+
+    switch (sort) {
+      case "Most Liked":
+        rest.sort((a, b) => b.likes - a.likes);
+        break;
+      case "Most Discussed":
+        rest.sort((a, b) => b.commentCount - a.commentCount);
+        break;
+      default:
+        rest.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    }
+
+    return [...pinned, ...rest];
+  }, [posts, postTypeTab, selectedGenres, selectedSubGenres, selectedCategories, sort]);
+
+  const topArtists = [...artists].sort((a, b) => b.followers - a.followers).slice(0, 4);
+  const activeFiltersCount = selectedGenres.length + selectedSubGenres.length + selectedCategories.length;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="flex gap-6">
+        {/* Left sidebar — filter (desktop) */}
+        <div className="hidden lg:block w-52 flex-shrink-0">
+          <div className="sticky top-20">
+            <FeedFilter
+              postTypeTab={postTypeTab}
+              onTabChange={setPostTypeTab}
+              selectedGenres={selectedGenres}
+              selectedSubGenres={selectedSubGenres}
+              onGenreToggle={toggleGenre}
+              onSubGenreToggle={toggleSubGenre}
+              selectedCategories={selectedCategories}
+              onCategoryToggle={toggleCategory}
+              onClear={clearFilters}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
         </div>
-      </main>
+
+        {/* Main feed */}
+        <div className="flex-1 min-w-0">
+          {/* Feed controls */}
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button
+                className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-400 hover:text-white transition-colors"
+                onClick={() => setShowMobileFilter(!showMobileFilter)}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                </svg>
+                Filter
+                {activeFiltersCount > 0 && (
+                  <span className="ml-1 w-4 h-4 rounded-full bg-orange-500 text-white text-xs flex items-center justify-center">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </button>
+              <span className="text-gray-500 text-sm">{filteredPosts.length} posts</span>
+            </div>
+            <div className="flex items-center gap-1 bg-[#13131f] border border-white/5 rounded-lg p-1">
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setSort(opt)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                    sort === opt ? "bg-orange-500 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile filter */}
+          {showMobileFilter && (
+            <div className="lg:hidden mb-4">
+              <FeedFilter
+                postTypeTab={postTypeTab}
+                onTabChange={setPostTypeTab}
+                selectedGenres={selectedGenres}
+                selectedSubGenres={selectedSubGenres}
+                onGenreToggle={toggleGenre}
+                onSubGenreToggle={toggleSubGenre}
+                selectedCategories={selectedCategories}
+                onCategoryToggle={toggleCategory}
+                onClear={clearFilters}
+              />
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {activeFiltersCount > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {selectedGenres.map((g) => (
+                <span key={g} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 text-xs border border-orange-500/30">
+                  {g}
+                  <button onClick={() => toggleGenre(g)} className="hover:text-white ml-0.5">×</button>
+                </span>
+              ))}
+              {selectedSubGenres.map((sg) => (
+                <span key={sg} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 text-xs border border-orange-500/30">
+                  {sg}
+                  <button onClick={() => toggleSubGenre(sg)} className="hover:text-white ml-0.5">×</button>
+                </span>
+              ))}
+              {selectedCategories.map((c) => (
+                <span key={c} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs border border-purple-500/30">
+                  {c}
+                  <button onClick={() => toggleCategory(c)} className="hover:text-white ml-0.5">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Feed */}
+          <div className="space-y-3">
+            {filteredPosts.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+                <p>No posts match your filters.</p>
+                <button onClick={clearFilters} className="mt-2 text-orange-400 hover:underline text-sm">
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              filteredPosts.map((post) => {
+                if (post.type === "track") {
+                  return <TrackDiscussionCard key={post.id} post={post as TrackDiscussionPost} />;
+                }
+                return <CommunityPostCard key={post.id} post={post as CommunityPost} />;
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Right sidebar */}
+        <div className="hidden xl:block w-64 flex-shrink-0">
+          <div className="sticky top-20 space-y-4">
+            {/* Feed stats */}
+            <div className="bg-[#13131f] border border-white/5 rounded-xl p-4">
+              <h2 className="font-bold text-white text-xs uppercase tracking-wider mb-3">Community</h2>
+              <div className="space-y-2">
+                {[
+                  { label: "Total posts", value: posts.length },
+                  { label: "Track discussions", value: posts.filter((p) => p.type === "track").length },
+                  { label: "Community posts", value: posts.filter((p) => p.type === "community").length },
+                ].map((stat) => (
+                  <div key={stat.label} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">{stat.label}</span>
+                    <span className="text-orange-400 font-semibold">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top artists */}
+            <div className="bg-[#13131f] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold text-white text-xs uppercase tracking-wider">Top Artists</h2>
+                <Link href="/artists" className="text-xs text-orange-400 hover:text-orange-300">
+                  See all
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {topArtists.map((artist) => (
+                  <Link key={artist.id} href={`/artists/${artist.id}`}>
+                    <div className="flex items-center gap-3 hover:bg-white/5 rounded-lg p-1.5 -mx-1.5 transition-colors group">
+                      <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${artist.avatarColor} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
+                        {artist.initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          <p className="font-medium text-xs text-white group-hover:text-orange-400 transition-colors truncate">
+                            {artist.name}
+                          </p>
+                          {artist.verified && (
+                            <svg className="w-3 h-3 text-orange-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600">{formatNumber(artist.followers)}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Trending tags */}
+            <div className="bg-[#13131f] border border-white/5 rounded-xl p-4">
+              <h2 className="font-bold text-white text-xs uppercase tracking-wider mb-3">Trending Tags</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {["Mumbai", "Delhi", "underground", "classic", "bhangra", "trap", "conscious", "lyrical", "viral"].map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-0.5 rounded-full bg-white/5 text-gray-400 text-xs border border-white/10 hover:border-orange-500/30 hover:text-orange-400 cursor-pointer transition-colors"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
