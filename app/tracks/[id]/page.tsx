@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getTrackById, getArtistById, getCommentsByTrackId, formatNumber, timeAgo } from "@/lib/data";
+import { getTrackInfo, stripHtml } from "@/lib/lastfm";
 import CommentSection from "@/components/CommentSection";
 
 interface Props {
@@ -14,6 +15,13 @@ export default async function TrackPage({ params }: Props) {
 
   const artist = getArtistById(track.artistId);
   const trackComments = getCommentsByTrackId(id);
+
+  // Enrich with Last.fm data (falls back gracefully if unavailable)
+  const lfmInfo = await getTrackInfo(track.artistName, track.title).catch(() => null);
+  const lfmPlays = lfmInfo?.playcount ? parseInt(lfmInfo.playcount, 10) : null;
+  const lfmListeners = lfmInfo?.listeners ? parseInt(lfmInfo.listeners, 10) : null;
+  const lfmDescription = lfmInfo?.wiki?.summary ? stripHtml(lfmInfo.wiki.summary) : null;
+  const lfmTags = lfmInfo?.toptags?.tag?.map((t) => t.name).filter(Boolean) ?? [];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -47,7 +55,28 @@ export default async function TrackPage({ params }: Props) {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-black text-white mb-1">{track.title}</h1>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                {lfmInfo?.url ? (
+                  <a
+                    href={lfmInfo.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-2xl font-black text-white hover:text-orange-400 transition-colors"
+                  >
+                    {track.title}
+                  </a>
+                ) : (
+                  <h1 className="text-2xl font-black text-white">{track.title}</h1>
+                )}
+                {lfmInfo?.url && (
+                  <span className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2 py-0.5">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
+                    </svg>
+                    Last.fm
+                  </span>
+                )}
+              </div>
 
               {/* Artist link */}
               <Link
@@ -91,14 +120,17 @@ export default async function TrackPage({ params }: Props) {
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: "Plays", value: formatNumber(track.plays) },
+                  { label: "Plays", value: formatNumber(lfmPlays ?? track.plays) },
+                  ...(lfmListeners ? [{ label: "Listeners", value: formatNumber(lfmListeners), highlight: true }] : []),
                   { label: "Likes", value: formatNumber(track.likes) },
                   { label: "Comments", value: formatNumber(track.commentCount) },
                 ].map((stat) => (
                   <div key={stat.label} className="bg-white/5 rounded-lg p-3 text-center">
-                    <div className="text-lg font-black text-orange-400">{stat.value}</div>
+                    <div className={`text-lg font-black ${"highlight" in stat && stat.highlight ? "text-red-400" : "text-orange-400"}`}>
+                      {stat.value}
+                    </div>
                     <div className="text-xs text-gray-500">{stat.label}</div>
                   </div>
                 ))}
@@ -108,13 +140,20 @@ export default async function TrackPage({ params }: Props) {
 
           {/* Description */}
           <div className="mt-5 pt-5 border-t border-white/5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">About this track</h3>
-            <p className="text-sm text-gray-300 leading-relaxed">{track.description}</p>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">About this track</h3>
+              {lfmDescription && (
+                <span className="text-xs text-red-400/60">· via Last.fm</span>
+              )}
+            </div>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              {lfmDescription || track.description}
+            </p>
           </div>
 
           {/* Tags */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {track.tags.map((tag) => (
+            {(lfmTags.length > 0 ? lfmTags : track.tags).map((tag) => (
               <span
                 key={tag}
                 className="px-2.5 py-1 rounded-full bg-white/5 text-gray-500 text-xs border border-white/10"

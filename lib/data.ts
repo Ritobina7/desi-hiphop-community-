@@ -597,6 +597,10 @@ export const allSubGenres = [
   "Political Rap",
 ] as const;
 
+/** IDs of the seed track posts — used by FeedPage to filter them out when
+ *  server-fetched Last.fm tracks are available, avoiding duplication. */
+export const SEED_TRACK_POST_IDS = new Set(seedTrackDiscussionPosts.map((p) => p.id));
+
 export const allCategories = [
   "Events",
   "Culture & Debates",

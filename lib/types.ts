@@ -81,6 +81,9 @@ export interface TrackDiscussionPost {
   tags?: string[];
   album?: string;
   year?: number;
+  // Last.fm enrichment (present when sourced from Last.fm API)
+  lastFmUrl?: string;
+  lastFmListeners?: number;
 }
 
 export interface CommunityPost {

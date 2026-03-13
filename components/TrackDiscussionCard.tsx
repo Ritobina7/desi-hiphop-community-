@@ -17,6 +17,7 @@ export default function TrackDiscussionCard({ post }: Props) {
 
   function handleLike(e: React.MouseEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setLiked((v) => !v);
     setLikeCount((n) => (liked ? n - 1 : n + 1));
   }
@@ -31,6 +32,14 @@ export default function TrackDiscussionCard({ post }: Props) {
           {/* Type label */}
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-xs font-semibold text-orange-400/80">🎵 Track Discussion</span>
+            {post.lastFmUrl && (
+              <span className="flex items-center gap-1 text-xs text-red-400/70">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
+                </svg>
+                Last.fm
+              </span>
+            )}
           </div>
 
           <div className="flex gap-3">
@@ -126,6 +135,15 @@ export default function TrackDiscussionCard({ post }: Props) {
               </span>
             )}
 
+            {post.lastFmListeners && post.lastFmListeners > 0 ? (
+              <span className="flex items-center gap-1 text-xs text-red-400/80">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
+                </svg>
+                {formatNumber(post.lastFmListeners)}
+              </span>
+            ) : null}
+
             <div className="ml-auto flex items-center gap-1.5">
               <div className={`w-5 h-5 rounded-full ${post.authorColor} flex items-center justify-center text-white text-xs font-bold`}>
                 {post.author.charAt(0).toUpperCase()}
@@ -140,6 +158,13 @@ export default function TrackDiscussionCard({ post }: Props) {
 
   if (post.trackId) {
     return <Link href={`/tracks/${post.trackId}`}>{inner}</Link>;
+  }
+  if (post.lastFmUrl) {
+    return (
+      <a href={post.lastFmUrl} target="_blank" rel="noopener noreferrer">
+        {inner}
+      </a>
+    );
   }
   return inner;
 }

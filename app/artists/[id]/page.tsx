@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getArtistById, getTracksByArtistId, formatNumber } from "@/lib/data";
+import { getArtistInfo, stripHtml, getArtistImage } from "@/lib/lastfm";
 import TrackCard from "@/components/TrackCard";
 
 interface Props {
@@ -13,6 +14,14 @@ export default async function ArtistPage({ params }: Props) {
   if (!artist) notFound();
 
   const artistTracks = getTracksByArtistId(id);
+
+  // Enrich with Last.fm data (graceful fallback if unavailable)
+  const lfmArtist = await getArtistInfo(artist.name).catch(() => null);
+  const lfmBio = lfmArtist?.bio?.summary ? stripHtml(lfmArtist.bio.summary) : null;
+  const lfmImageUrl = lfmArtist ? getArtistImage(lfmArtist.image) : "";
+  const lfmListeners = lfmArtist?.stats?.listeners ? parseInt(lfmArtist.stats.listeners, 10) : null;
+  const lfmPlays = lfmArtist?.stats?.playcount ? parseInt(lfmArtist.stats.playcount, 10) : null;
+  const similarArtists = lfmArtist?.similar?.artist?.slice(0, 5) ?? [];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -66,6 +75,12 @@ export default async function ArtistPage({ params }: Props) {
               <div className="text-xl font-black text-white">{formatNumber(artist.followers)}</div>
               <div className="text-xs text-gray-500">Followers</div>
             </div>
+            {lfmListeners && (
+              <div>
+                <div className="text-xl font-black text-red-400">{formatNumber(lfmListeners)}</div>
+                <div className="text-xs text-gray-500">LFM Listeners</div>
+              </div>
+            )}
             <div>
               <div className="text-xl font-black text-white">{artistTracks.length}</div>
               <div className="text-xs text-gray-500">Tracks</div>
@@ -82,8 +97,32 @@ export default async function ArtistPage({ params }: Props) {
         {/* About */}
         <div className="lg:col-span-1">
           <div className="bg-[#13131f] border border-white/5 rounded-xl p-5">
-            <h2 className="font-bold text-white text-sm uppercase tracking-wider mb-3">About</h2>
-            <p className="text-sm text-gray-400 leading-relaxed">{artist.bio}</p>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-white text-sm uppercase tracking-wider">About</h2>
+              {lfmArtist?.url && (
+                <a
+                  href={lfmArtist.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
+                  </svg>
+                  Last.fm
+                </a>
+              )}
+            </div>
+            <p className="text-sm text-gray-400 leading-relaxed">{lfmBio || artist.bio}</p>
+
+            {lfmPlays && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-red-400/70">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
+                </svg>
+                {formatNumber(lfmPlays)} total plays on Last.fm
+              </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-white/5">
               <div className="flex flex-col gap-2 text-sm">
@@ -107,6 +146,26 @@ export default async function ArtistPage({ params }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* Similar artists from Last.fm */}
+            {similarArtists.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Similar Artists</h3>
+                <div className="flex flex-col gap-1.5">
+                  {similarArtists.map((sim) => (
+                    <a
+                      key={sim.name}
+                      href={sim.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-gray-400 hover:text-orange-400 transition-colors truncate"
+                    >
+                      {sim.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
