@@ -13,7 +13,13 @@ export interface YtVideoData {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizeStr(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  return s
+    .toLowerCase()
+    .replace(/\$/g, "s")          // Kr$na → krsna
+    .replace(/[/\\|]+/g, " ")     // PAPER KAMA / PAPER CUTS → split on slash
+    .replace(/[^a-z0-9\s]/g, "")  // strip remaining special chars
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function bigramDice(a: string, b: string): number {
@@ -114,14 +120,20 @@ export async function getYouTubeViews(
     const title = item.snippet.title;
     const normTitle = normalizeStr(title);
     let score = 0;
-    if (normTitle.includes(normArtist)) score += 2;
+    if (normTitle.includes(normArtist)) {
+      score += 2;
+    } else {
+      // Partial match: first word of artist name (if meaningful length)
+      const firstWord = normArtist.split(" ")[0];
+      if (firstWord.length >= 4 && normTitle.includes(firstWord)) score += 1;
+    }
     if (normTitle.includes(normTrack)) score += 2;
     if (bigramDice(artist, item.snippet.channelTitle) >= 0.7) score += 3;
     if (normTitle.includes("official video")) score += 1;
     if (normTitle.includes("official audio") || normTitle.includes("lyric")) score += 1;
     if (normTitle.includes("remix") || normTitle.includes("cover")) score -= 3;
 
-    if (score >= 2 && (!bestVideo || score > bestVideo.score)) {
+    if (score >= 1 && (!bestVideo || score > bestVideo.score)) {
       bestVideo = { videoId: item.id.videoId, videoTitle: title, score };
     }
   }
