@@ -159,12 +159,5 @@ export default function TrackDiscussionCard({ post }: Props) {
   if (post.trackId) {
     return <Link href={`/tracks/${post.trackId}`}>{inner}</Link>;
   }
-  if (post.lastFmUrl) {
-    return (
-      <a href={post.lastFmUrl} target="_blank" rel="noopener noreferrer">
-        {inner}
-      </a>
-    );
-  }
   return inner;
 }

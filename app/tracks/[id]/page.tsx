@@ -56,19 +56,8 @@ export default async function TrackPage({ params }: Props) {
             {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                {lfmInfo?.url ? (
-                  <a
-                    href={lfmInfo.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-2xl font-black text-white hover:text-orange-400 transition-colors"
-                  >
-                    {track.title}
-                  </a>
-                ) : (
-                  <h1 className="text-2xl font-black text-white">{track.title}</h1>
-                )}
-                {lfmInfo?.url && (
+                <h1 className="text-2xl font-black text-white">{track.title}</h1>
+                {lfmInfo && (
                   <span className="flex items-center gap-1 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2 py-0.5">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />

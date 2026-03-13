@@ -99,18 +99,13 @@ export default async function ArtistPage({ params }: Props) {
           <div className="bg-[#13131f] border border-white/5 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-white text-sm uppercase tracking-wider">About</h2>
-              {lfmArtist?.url && (
-                <a
-                  href={lfmArtist.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors"
-                >
+              {lfmArtist && (
+                <span className="flex items-center gap-1 text-xs text-red-400/70">
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.514 0 10 4.486 10 10s-4.486 10-10 10S2 17.514 2 12 6.486 2 12 2zm-1 5v6l5 3-1 1.732-6-3.464V7h2z" />
                   </svg>
                   Last.fm
-                </a>
+                </span>
               )}
             </div>
             <p className="text-sm text-gray-400 leading-relaxed">{lfmBio || artist.bio}</p>
@@ -153,15 +148,9 @@ export default async function ArtistPage({ params }: Props) {
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Similar Artists</h3>
                 <div className="flex flex-col gap-1.5">
                   {similarArtists.map((sim) => (
-                    <a
-                      key={sim.name}
-                      href={sim.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-gray-400 hover:text-orange-400 transition-colors truncate"
-                    >
+                    <span key={sim.name} className="text-sm text-gray-400 truncate">
                       {sim.name}
-                    </a>
+                    </span>
                   ))}
                 </div>
               </div>
