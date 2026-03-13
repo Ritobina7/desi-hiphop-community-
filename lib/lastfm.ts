@@ -1,4 +1,5 @@
 import { TrackDiscussionPost, Genre } from "./types";
+import { MbReleaseData, searchRelease, delay } from "./musicbrainz";
 
 const BASE = "http://ws.audioscrobbler.com/2.0/";
 
@@ -50,16 +51,36 @@ export interface LfmArtistInfo {
 
 /** Enriched track returned by getDesiHipHopTracks */
 export interface EnrichedLfmTrack {
-  id: string;          // "lfm-krsna-god-keyboard"
-  title: string;       // original title from Last.fm
-  artistName: string;  // original artist name from Last.fm
+  id: string;           // "lfm-krsna-god-keyboard"
+  title: string;        // original title from Last.fm
+  artistName: string;   // original artist name from Last.fm
   playcount: number;
   listeners: number;
-  tags: string[];      // from track.getInfo toptags
+  tags: string[];       // from track.getInfo toptags
   coverArt: string | null;
   sourceTags: string[]; // which DHH tags this track was found under
   url: string;
-  duration: string;    // formatted "m:ss"
+  duration: string;     // formatted "m:ss"
+  mbData: MbReleaseData | null; // MusicBrainz release info (null = unmatched)
+}
+
+/** A release (Album/EP/Mixtape) with 2+ tracks present in the feed */
+export interface AlbumGroup {
+  releaseId: string;
+  releaseTitle: string;
+  releaseType: "Album" | "EP" | "Mixtape" | "Single";
+  releaseYear: number | null;
+  artistName: string;
+  trackCount: number;          // total tracks on the release (from MusicBrainz)
+  tracks: EnrichedLfmTrack[];  // tracks from our feed belonging to this release
+  topTrack: string;            // highest-playcount track title
+}
+
+/** Full result from the DHH pipeline */
+export interface DesiHipHopData {
+  tracks: EnrichedLfmTrack[];          // all 20 tracks (for feed, ordered by playcount)
+  standaloneTracks: EnrichedLfmTrack[]; // singles + tracks whose release has <2 entries in feed
+  albumGroups: AlbumGroup[];           // releases with 2+ tracks in the feed
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -212,8 +233,11 @@ const DESI_TAGS = [
 // How many deduped candidates to enrich with track.getInfo before final sort
 const ENRICH_LIMIT = 40;
 
-export async function getDesiHipHopTracks(): Promise<EnrichedLfmTrack[]> {
-  // Phase 1: fetch all tag track lists in parallel (14 API calls)
+// Delay between MusicBrainz requests (ms) — MusicBrainz rate limit is 1 req/sec
+const MB_DELAY_MS = 1100;
+
+export async function getDesiHipHopTracks(): Promise<DesiHipHopData> {
+  // ── Phase 1: fetch all 14 tag track lists in parallel ─────────────────────
   const tagResults = await Promise.all(
     DESI_TAGS.map((tag) =>
       getTagTopTracks(tag, 10)
@@ -224,10 +248,7 @@ export async function getDesiHipHopTracks(): Promise<EnrichedLfmTrack[]> {
 
   const rawCount = tagResults.reduce((sum, r) => sum + r.tracks.length, 0);
 
-  // Phase 2: deduplicate by normalized key
-  // When a track appears in multiple tags, keep the instance with the lowest
-  // rank number (rank 1 = top of that tag = likely highest plays) as the
-  // representative. Collect all sourceTags regardless.
+  // ── Phase 2: deduplicate by normalized key ─────────────────────────────────
   const groups = new Map<
     string,
     { track: LfmTagTrack; sourceTags: string[]; bestRank: number }
@@ -256,13 +277,12 @@ export async function getDesiHipHopTracks(): Promise<EnrichedLfmTrack[]> {
     `Last.fm fetch complete: ${rawCount} raw tracks → ${uniqueCount} unique tracks after dedup (${rawCount - uniqueCount} duplicates removed)`
   );
 
-  // Phase 3: take top candidates by rank for enrichment (limit API calls)
+  // ── Phase 3: enrich top candidates with track.getInfo ─────────────────────
   const candidates = Array.from(groups.values())
     .sort((a, b) => a.bestRank - b.bestRank)
     .slice(0, ENRICH_LIMIT);
 
-  // Phase 4: enrich with track.getInfo to get actual playcount, listeners, tags, album art
-  const enriched = await Promise.all(
+  const lfmEnriched = await Promise.all(
     candidates.map(async ({ track, sourceTags }) => {
       const info = await getTrackInfo(track.artist.name, track.name).catch(() => null);
 
@@ -288,12 +308,75 @@ export async function getDesiHipHopTracks(): Promise<EnrichedLfmTrack[]> {
         sourceTags,
         url: info?.url ?? track.url,
         duration,
+        mbData: null as MbReleaseData | null, // filled in Phase 4
       } satisfies EnrichedLfmTrack;
     })
   );
 
-  // Phase 5: sort by playcount descending, return top 20
-  return enriched.sort((a, b) => b.playcount - a.playcount).slice(0, 20);
+  // Sort by playcount and take top 20 before hitting MusicBrainz
+  const top20 = lfmEnriched.sort((a, b) => b.playcount - a.playcount).slice(0, 20);
+
+  // ── Phase 4: enrich with MusicBrainz (sequential, 1s between requests) ────
+  for (let i = 0; i < top20.length; i++) {
+    if (i > 0) await delay(MB_DELAY_MS);
+    top20[i].mbData = await searchRelease(top20[i].artistName, top20[i].title).catch(
+      () => null
+    );
+  }
+
+  // ── Phase 5: group by releaseId ───────────────────────────────────────────
+  const releaseMap = new Map<string, EnrichedLfmTrack[]>();
+  for (const track of top20) {
+    if (!track.mbData) continue;
+    const rid = track.mbData.releaseId;
+    const group = releaseMap.get(rid) ?? [];
+    group.push(track);
+    releaseMap.set(rid, group);
+  }
+
+  const albumGroups: AlbumGroup[] = [];
+  const albumReleasIds = new Set<string>();
+
+  for (const [releaseId, groupTracks] of releaseMap) {
+    if (groupTracks.length < 2) continue; // only form a group if 2+ tracks
+
+    albumReleasIds.add(releaseId);
+    const sorted = [...groupTracks].sort((a, b) => b.playcount - a.playcount);
+    const rep = groupTracks[0]; // representative for release metadata
+
+    albumGroups.push({
+      releaseId,
+      releaseTitle: rep.mbData!.releaseTitle,
+      releaseType: rep.mbData!.releaseType,
+      releaseYear: rep.mbData!.releaseYear,
+      artistName: sorted[0].artistName,
+      trackCount: rep.mbData!.trackCount,
+      tracks: sorted,
+      topTrack: sorted[0].title,
+    });
+  }
+
+  const standaloneTracks = top20.filter(
+    (t) => !t.mbData || !albumReleasIds.has(t.mbData.releaseId)
+  );
+
+  // ── Sanity check log ──────────────────────────────────────────────────────
+  const enrichedCount = top20.filter((t) => t.mbData !== null).length;
+  const unmatchedCount = top20.length - enrichedCount;
+  const groupLines = albumGroups.map(
+    (g) => `  ${g.artistName} - ${g.releaseTitle} (${g.releaseType}, ${g.tracks.length} tracks)`
+  );
+  console.log(
+    [
+      `MusicBrainz enrichment complete:`,
+      ` ${enrichedCount} tracks enriched with release data`,
+      ` ${unmatchedCount} tracks unmatched (showing as singles)`,
+      ` ${albumGroups.length} album/EP/mixtape group(s) formed`,
+      albumGroups.length > 0 ? `Groups:\n${groupLines.join("\n")}` : ` Groups: none`,
+    ].join("\n")
+  );
+
+  return { tracks: top20, standaloneTracks, albumGroups };
 }
 
 // ── Converter: EnrichedLfmTrack → feed posts ──────────────────────────────────

@@ -7,9 +7,9 @@ export default async function Page() {
   let serverTrackPosts: TrackDiscussionPost[] = seedTrackDiscussionPosts;
 
   try {
-    const lfmTracks = await getDesiHipHopTracks();
-    if (lfmTracks.length > 0) {
-      serverTrackPosts = lfmTracksToFeedPosts(lfmTracks);
+    const lfmData = await getDesiHipHopTracks();
+    if (lfmData.tracks.length > 0) {
+      serverTrackPosts = lfmTracksToFeedPosts(lfmData.tracks);
     }
   } catch {
     // API unavailable — fall back to seed data silently
