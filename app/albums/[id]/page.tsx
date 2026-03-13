@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getDesiHipHopTracks } from "@/lib/lastfm";
+import { getCachedAlbumGroups } from "@/lib/cache";
 import { formatNumber } from "@/lib/data";
 import CommentSection from "@/components/CommentSection";
 
@@ -11,8 +11,7 @@ interface Props {
 export default async function AlbumPage({ params }: Props) {
   const { id } = await params;
 
-  const lfmData = await getDesiHipHopTracks().catch(() => null);
-  const group = lfmData?.serializedAlbumGroups.find((g) => g.releaseId === id);
+  const group = getCachedAlbumGroups().find((g) => g.releaseId === id);
   if (!group) notFound();
 
   const totalYtViews = group.tracks.reduce((sum, t) => sum + (t.ytViewCount ?? 0), 0);

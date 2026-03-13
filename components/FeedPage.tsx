@@ -16,9 +16,10 @@ type SortOption = (typeof SORT_OPTIONS)[number];
 interface Props {
   serverTrackPosts: TrackDiscussionPost[];
   serverAlbumGroups: SerializedAlbumGroup[];
+  cacheAge?: { minutes: number; display: string };
 }
 
-export default function FeedPage({ serverTrackPosts, serverAlbumGroups }: Props) {
+export default function FeedPage({ serverTrackPosts, serverAlbumGroups, cacheAge }: Props) {
   const { posts: contextPosts } = useFeed();
 
   const [postTypeTab, setPostTypeTab] = useState<PostTypeTab>("all");
@@ -279,7 +280,7 @@ export default function FeedPage({ serverTrackPosts, serverAlbumGroups }: Props)
                   { label: "Community posts", value: communityCount },
                   {
                     label: "Data source",
-                    value: fromLastFm ? "Last.fm live" : "Mock data",
+                    value: fromLastFm ? "Last.fm" : "Mock data",
                     highlight: fromLastFm,
                   },
                 ].map((stat) => (
@@ -290,6 +291,12 @@ export default function FeedPage({ serverTrackPosts, serverAlbumGroups }: Props)
                     </span>
                   </div>
                 ))}
+                {cacheAge && fromLastFm && (
+                  <div className="flex items-center justify-between text-sm pt-1 border-t border-white/5 mt-1">
+                    <span className="text-gray-600">Last updated</span>
+                    <span className="text-gray-500 text-xs">{cacheAge.display}</span>
+                  </div>
+                )}
               </div>
             </div>
 

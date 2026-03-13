@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated music cache (rebuilt on every deploy via prebuild)
+/public/data/music-cache.json

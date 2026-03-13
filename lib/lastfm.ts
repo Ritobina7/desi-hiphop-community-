@@ -413,16 +413,34 @@ export async function getDesiHipHopTracks(): Promise<DesiHipHopData> {
   // ── Sanity check log ──────────────────────────────────────────────────────
   const mbEnrichedCount = top20.filter((t) => t.mbData !== null).length;
   const unmatchedCount = top20.length - mbEnrichedCount;
-  const ytEnrichedCount = top20.filter((t) => t.ytData !== null).length;
+  const ytHit = top20.filter((t) => t.ytData !== null);
+  const ytMiss = top20.filter((t) => t.ytData === null);
+  const ytSorted = [...ytHit].sort(
+    (a, b) => (b.ytData?.viewCount ?? 0) - (a.ytData?.viewCount ?? 0)
+  );
+  const topYt = ytSorted[0];
   const groupLines = albumGroups.map(
     (g) => `  ${g.artistName} - ${g.releaseTitle} (${g.releaseType}, ${g.tracks.length} tracks)`
   );
+  const ytLines = ytSorted.slice(0, 5).map(
+    (t) =>
+      `  ${t.artistName} - ${t.title}: ${(t.ytData!.viewCount! / 1_000_000).toFixed(1)}M ${t.ytData!.label}`
+  );
+  const ytMissLines = ytMiss.map((t) => `  ${t.artistName} - ${t.title}`);
   console.log(
     [
-      `MusicBrainz enrichment: ${mbEnrichedCount} matched, ${unmatchedCount} unmatched`,
-      `YouTube enrichment: ${ytEnrichedCount}/${top20.length} tracks with view counts`,
-      `Album groups: ${albumGroups.length} formed`,
+      `── Step 3 Sanity Check ───────────────────────────`,
+      `MusicBrainz: ${mbEnrichedCount} matched, ${unmatchedCount} unmatched`,
+      `YouTube: ${ytHit.length} with views, ${ytMiss.length} without`,
+      ytHit.length > 0
+        ? `Top 5 by YT views:\n${ytLines.join("\n")}`
+        : `Top by YT views: none`,
+      ytMiss.length > 0
+        ? `No YT match:\n${ytMissLines.join("\n")}`
+        : `No YT match: none`,
+      `Album groups: ${albumGroups.length}`,
       albumGroups.length > 0 ? `Groups:\n${groupLines.join("\n")}` : `Groups: none`,
+      `─────────────────────────────────────────────────`,
     ].join("\n")
   );
 

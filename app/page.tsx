@@ -1,21 +1,31 @@
-import { getDesiHipHopTracks, lfmTracksToFeedPosts } from "@/lib/lastfm";
+import { lfmTracksToFeedPosts } from "@/lib/lastfm";
+import { getCachedTracks, getCachedAlbumGroups, getCacheAge } from "@/lib/cache";
 import { seedTrackDiscussionPosts } from "@/lib/data";
 import { TrackDiscussionPost, SerializedAlbumGroup } from "@/lib/types";
 import FeedPage from "@/components/FeedPage";
 
+// ISR: regenerate this page in the background every hour.
+// On each regeneration, prebuild has already refreshed the cache file,
+// so getCached* calls return the latest data without hitting any API.
+export const revalidate = 3600;
+
 export default async function Page() {
-  let serverTrackPosts: TrackDiscussionPost[] = seedTrackDiscussionPosts;
-  let serverAlbumGroups: SerializedAlbumGroup[] = [];
+  const cachedTracks = getCachedTracks();
+  const cachedAlbumGroups = getCachedAlbumGroups();
+  const cacheAge = getCacheAge();
 
-  try {
-    const lfmData = await getDesiHipHopTracks();
-    if (lfmData.tracks.length > 0) {
-      serverTrackPosts = lfmTracksToFeedPosts(lfmData.standaloneTracks);
-      serverAlbumGroups = lfmData.serializedAlbumGroups;
-    }
-  } catch {
-    // API unavailable — fall back to seed data silently
-  }
+  const serverTrackPosts: TrackDiscussionPost[] =
+    cachedTracks.length > 0
+      ? lfmTracksToFeedPosts(cachedTracks)
+      : seedTrackDiscussionPosts;
 
-  return <FeedPage serverTrackPosts={serverTrackPosts} serverAlbumGroups={serverAlbumGroups} />;
+  const serverAlbumGroups: SerializedAlbumGroup[] = cachedAlbumGroups;
+
+  return (
+    <FeedPage
+      serverTrackPosts={serverTrackPosts}
+      serverAlbumGroups={serverAlbumGroups}
+      cacheAge={cacheAge}
+    />
+  );
 }
