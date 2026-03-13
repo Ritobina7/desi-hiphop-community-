@@ -156,8 +156,9 @@ export default function TrackDiscussionCard({ post }: Props) {
     </article>
   );
 
-  if (post.trackId) {
-    return <Link href={`/tracks/${post.trackId}`}>{inner}</Link>;
-  }
-  return inner;
+  const href = post.trackId
+    ? `/tracks/${post.trackId}`
+    : `/tracks/${post.id}?artist=${encodeURIComponent(post.artistName)}&track=${encodeURIComponent(post.trackTitle)}`;
+
+  return <Link href={href}>{inner}</Link>;
 }
