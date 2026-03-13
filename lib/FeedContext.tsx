@@ -9,7 +9,7 @@ import {
   ReactNode,
 } from "react";
 import { FeedItem, TrackDiscussionPost, CommunityPost } from "./types";
-import { seedTrackDiscussionPosts, seedCommunityPosts } from "./data";
+import { seedCommunityPosts } from "./data";
 
 interface FeedContextValue {
   posts: FeedItem[];
@@ -26,10 +26,7 @@ interface FeedContextValue {
 
 const FeedContext = createContext<FeedContextValue | null>(null);
 
-const INITIAL_POSTS: FeedItem[] = [
-  ...seedCommunityPosts,
-  ...seedTrackDiscussionPosts,
-];
+const INITIAL_POSTS: FeedItem[] = [...seedCommunityPosts];
 
 export function FeedProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<FeedItem[]>(INITIAL_POSTS);

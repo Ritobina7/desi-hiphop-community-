@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useFeed } from "@/lib/FeedContext";
-import { tracks, allGenres, allCategories, AUTHOR_COLORS } from "@/lib/data";
-import { Genre, PostCategory, Track, TrackDiscussionPost, CommunityPost } from "@/lib/types";
+import { allGenres, allCategories, AUTHOR_COLORS } from "@/lib/data";
+import { Genre, PostCategory, TrackDiscussionPost, CommunityPost } from "@/lib/types";
 
 type Step = "type-select" | "track-form" | "community-form";
 
@@ -16,23 +16,16 @@ const COVER_COLORS = [
 ];
 
 export default function PostModal() {
-  const { modalOpen, closeModal, addPost, showToast, username, setUsername, getExistingTrackPost } = useFeed();
+  const { modalOpen, closeModal, addPost, showToast, username, setUsername } = useFeed();
 
   // Step state
   const [step, setStep] = useState<Step>("type-select");
 
   // Track form
-  const [trackSearch, setTrackSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Track[]>([]);
-  const [showResults, setShowResults] = useState(false);
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-  const [isManualEntry, setIsManualEntry] = useState(false);
   const [manualTitle, setManualTitle] = useState("");
   const [manualArtist, setManualArtist] = useState("");
   const [trackText, setTrackText] = useState("");
   const [trackGenres, setTrackGenres] = useState<Genre[]>([]);
-  const [duplicatePost, setDuplicatePost] = useState<TrackDiscussionPost | null>(null);
-  const [postAnyway, setPostAnyway] = useState(false);
 
   // Community form
   const [communityTitle, setCommunityTitle] = useState("");
@@ -45,7 +38,6 @@ export default function PostModal() {
   const [usernameInput, setUsernameInput] = useState(username);
   const [showDiscard, setShowDiscard] = useState(false);
 
-  const searchRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync username
@@ -53,37 +45,9 @@ export default function PostModal() {
     setUsernameInput(username);
   }, [username]);
 
-  // Search tracks
-  useEffect(() => {
-    if (trackSearch.trim().length < 1) {
-      setSearchResults([]);
-      setShowResults(false);
-      return;
-    }
-    const q = trackSearch.toLowerCase();
-    const results = tracks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.artistName.toLowerCase().includes(q)
-    ).slice(0, 5);
-    setSearchResults(results);
-    setShowResults(true);
-  }, [trackSearch]);
-
-  // Check for duplicate when track selected
-  useEffect(() => {
-    if (selectedTrack) {
-      const existing = getExistingTrackPost(selectedTrack.id);
-      setDuplicatePost(existing || null);
-      setPostAnyway(false);
-    } else {
-      setDuplicatePost(null);
-    }
-  }, [selectedTrack, getExistingTrackPost]);
-
   function hasContent(): boolean {
     if (step === "track-form") {
-      return !!(selectedTrack || trackText || manualTitle || manualArtist);
+      return !!(trackText || manualTitle || manualArtist);
     }
     if (step === "community-form") {
       return !!(communityTitle || communityBody);
@@ -106,31 +70,16 @@ export default function PostModal() {
 
   function resetAll() {
     setStep("type-select");
-    setTrackSearch("");
-    setSearchResults([]);
-    setShowResults(false);
-    setSelectedTrack(null);
-    setIsManualEntry(false);
     setManualTitle("");
     setManualArtist("");
     setTrackText("");
     setTrackGenres([]);
-    setDuplicatePost(null);
-    setPostAnyway(false);
     setCommunityTitle("");
     setCommunityBody("");
     setCommunityCategory("");
     setCommunityGenres([]);
     setCommunityImage(null);
     setShowDiscard(false);
-  }
-
-  function selectTrack(track: Track) {
-    setSelectedTrack(track);
-    setTrackSearch(track.title + " — " + track.artistName);
-    setShowResults(false);
-    setIsManualEntry(false);
-    setTrackGenres([track.genre]);
   }
 
   function handleTrackSubmit() {
@@ -143,20 +92,19 @@ export default function PostModal() {
     const post: TrackDiscussionPost = {
       id: `tdp-${Date.now()}`,
       type: "track",
-      trackId: selectedTrack?.id,
-      trackTitle: selectedTrack ? selectedTrack.title : manualTitle.trim(),
-      artistName: selectedTrack ? selectedTrack.artistName : manualArtist.trim(),
-      genre: trackGenres[0] || (selectedTrack?.genre ?? "Gully Rap"),
-      subGenre: selectedTrack?.subGenre,
-      coverColor: selectedTrack?.coverColor ?? colorScheme.coverColor,
-      coverAccent: selectedTrack?.coverAccent ?? colorScheme.coverAccent,
-      duration: selectedTrack?.duration ?? "—",
+      trackId: undefined,
+      trackTitle: manualTitle.trim(),
+      artistName: manualArtist.trim(),
+      genre: trackGenres[0] ?? "Gully Rap",
+      coverColor: colorScheme.coverColor,
+      coverAccent: colorScheme.coverAccent,
+      duration: "—",
       userText: trackText.trim(),
       author: finalUsername,
       authorColor: AUTHOR_COLORS[colorIdx],
       likes: 0,
       commentCount: 0,
-      plays: selectedTrack?.plays ?? 0,
+      plays: 0,
       postedAt: new Date().toISOString(),
     };
 
@@ -215,9 +163,7 @@ export default function PostModal() {
 
   if (!modalOpen) return null;
 
-  const canTrackPost =
-    (selectedTrack || (manualTitle.trim() && manualArtist.trim())) &&
-    trackText.trim();
+  const canTrackPost = manualTitle.trim() && manualArtist.trim() && trackText.trim();
 
   const canCommunityPost = communityTitle.trim();
 
@@ -326,198 +272,64 @@ export default function PostModal() {
             {/* ── TRACK FORM ── */}
             {step === "track-form" && (
               <div className="flex flex-col gap-4">
-                {/* Search */}
-                {!selectedTrack && !isManualEntry && (
-                  <div ref={searchRef} className="relative">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">
-                      Find a track
-                    </label>
-                    <div className="relative">
-                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={trackSearch}
-                        onChange={(e) => setTrackSearch(e.target.value)}
-                        placeholder="Search by track or artist name..."
-                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50"
-                      />
-                    </div>
-                    {/* Results dropdown */}
-                    {showResults && (
-                      <div className="absolute top-full mt-1 left-0 right-0 bg-[#1a1a2e] border border-white/10 rounded-xl overflow-hidden z-10 shadow-xl">
-                        {searchResults.length > 0 ? (
-                          searchResults.map((t) => (
-                            <button
-                              key={t.id}
-                              onClick={() => selectTrack(t)}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
-                            >
-                              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${t.coverColor} flex-shrink-0`} />
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-white truncate">{t.title}</p>
-                                <p className="text-xs text-gray-500 truncate">{t.artistName}</p>
-                              </div>
-                              <span className="ml-auto text-xs text-gray-600 flex-shrink-0">{t.duration}</span>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-3 py-3 text-sm text-gray-500">
-                            No results for &ldquo;{trackSearch}&rdquo;
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* Manual entry prompt */}
-                    {trackSearch.length > 0 && searchResults.length === 0 && !showResults && (
-                      <button
-                        onClick={() => { setIsManualEntry(true); }}
-                        className="mt-2 text-xs text-orange-400 hover:text-orange-300 transition-colors"
-                      >
-                        Track not in database? Enter manually →
-                      </button>
-                    )}
-                    {trackSearch.length === 0 && (
-                      <button
-                        onClick={() => setIsManualEntry(true)}
-                        className="mt-2 text-xs text-gray-500 hover:text-gray-400 transition-colors"
-                      >
-                        Track not found? Enter manually →
-                      </button>
-                    )}
-                  </div>
-                )}
+                {/* Track + artist fields */}
+                <div className="flex flex-col gap-3">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    placeholder="Track name *"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50"
+                  />
+                  <input
+                    type="text"
+                    value={manualArtist}
+                    onChange={(e) => setManualArtist(e.target.value)}
+                    placeholder="Artist name *"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50"
+                  />
+                </div>
 
-                {/* Manual entry fields */}
-                {isManualEntry && (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        Manual Entry
-                      </label>
-                      <button
-                        onClick={() => setIsManualEntry(false)}
-                        className="text-xs text-gray-500 hover:text-white"
-                      >
-                        ← Search instead
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={manualTitle}
-                      onChange={(e) => setManualTitle(e.target.value)}
-                      placeholder="Track name *"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50"
-                    />
-                    <input
-                      type="text"
-                      value={manualArtist}
-                      onChange={(e) => setManualArtist(e.target.value)}
-                      placeholder="Artist name *"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50"
-                    />
-                  </div>
-                )}
-
-                {/* Selected track preview */}
-                {selectedTrack && (
-                  <div>
-                    {/* Duplicate nudge */}
-                    {duplicatePost && !postAnyway && (
-                      <div className="mb-3 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                        <p className="text-sm text-blue-300 font-medium mb-1">
-                          💬 People are already talking about this
-                        </p>
-                        <p className="text-xs text-gray-400 mb-2">
-                          There&apos;s an active discussion for this track. Join the existing thread instead?
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={`/tracks/${selectedTrack.id}`}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-                          >
-                            View existing discussion →
-                          </a>
-                          <button
-                            onClick={() => setPostAnyway(true)}
-                            className="text-xs text-gray-500 hover:text-gray-400 ml-1"
-                          >
-                            Post anyway
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Track card preview */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                      <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${selectedTrack.coverColor} flex-shrink-0`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-white text-sm">{selectedTrack.title}</p>
-                        <p className="text-xs text-gray-400">{selectedTrack.artistName}</p>
-                        <div className="flex gap-1.5 mt-1">
-                          <span className="px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-xs border border-orange-500/20">
-                            {selectedTrack.genre}
-                          </span>
-                          <span className="text-xs text-gray-600">{selectedTrack.duration}</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => { setSelectedTrack(null); setTrackSearch(""); setTrackGenres([]); setDuplicatePost(null); }}
-                        className="p-1 rounded-lg hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Text box — only show if not blocked by duplicate nudge */}
-                {(selectedTrack || isManualEntry) && (!duplicatePost || postAnyway) && (
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">
-                      What do you want to say about this track?
-                    </label>
-                    <textarea
-                      value={trackText}
-                      onChange={(e) => setTrackText(e.target.value)}
-                      placeholder="Share your take, breakdown a verse, or just vibe..."
-                      rows={4}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50 resize-none"
-                    />
-                  </div>
-                )}
+                {/* Text box */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">
+                    What do you want to say about this track?
+                  </label>
+                  <textarea
+                    value={trackText}
+                    onChange={(e) => setTrackText(e.target.value)}
+                    placeholder="Share your take, breakdown a verse, or just vibe..."
+                    rows={4}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50 resize-none"
+                  />
+                </div>
 
                 {/* Genre tags */}
-                {(selectedTrack || isManualEntry) && (!duplicatePost || postAnyway) && (
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
-                      Genre Tags
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {allGenres.map((g) => {
-                        const active = trackGenres.includes(g as Genre);
-                        return (
-                          <button
-                            key={g}
-                            type="button"
-                            onClick={() => toggleTrackGenre(g as Genre)}
-                            className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
-                              active
-                                ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
-                                : "bg-white/5 text-gray-400 border border-white/10 hover:border-white/20"
-                            }`}
-                          >
-                            {g}
-                          </button>
-                        );
-                      })}
-                    </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                    Genre Tags
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allGenres.map((g) => {
+                      const active = trackGenres.includes(g as Genre);
+                      return (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => toggleTrackGenre(g as Genre)}
+                          className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
+                            active
+                              ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                              : "bg-white/5 text-gray-400 border border-white/10 hover:border-white/20"
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -677,11 +489,7 @@ export default function PostModal() {
                 </button>
                 <button
                   onClick={step === "track-form" ? handleTrackSubmit : handleCommunitySubmit}
-                  disabled={
-                    step === "track-form"
-                      ? !canTrackPost || (!!duplicatePost && !postAnyway)
-                      : !canCommunityPost
-                  }
+                  disabled={step === "track-form" ? !canTrackPost : !canCommunityPost}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Post

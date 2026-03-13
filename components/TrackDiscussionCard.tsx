@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { TrackDiscussionPost } from "@/lib/types";
-import { formatNumber, timeAgo, comments as seedComments } from "@/lib/data";
+import { formatNumber, timeAgo } from "@/lib/data";
 
 interface Props {
   post: TrackDiscussionPost;
@@ -12,8 +12,6 @@ interface Props {
 export default function TrackDiscussionCard({ post }: Props) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likes);
-
-  const latestComment = seedComments.find((c) => c.trackId === post.trackId)?.content;
 
   function handleLike(e: React.MouseEvent) {
     e.preventDefault();
@@ -85,13 +83,6 @@ export default function TrackDiscussionCard({ post }: Props) {
           {/* User text */}
           {post.userText && (
             <p className="mt-2.5 text-sm text-gray-400 line-clamp-2">{post.userText}</p>
-          )}
-
-          {/* Latest comment */}
-          {latestComment && (
-            <div className="mt-2 pl-2 border-l-2 border-orange-500/20">
-              <p className="text-xs text-gray-500 italic line-clamp-1">&ldquo;{latestComment}&rdquo;</p>
-            </div>
           )}
 
           {/* Footer */}

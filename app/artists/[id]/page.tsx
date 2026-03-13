@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getArtistById, getTracksByArtistId, formatNumber } from "@/lib/data";
+import { getArtistById, formatNumber } from "@/lib/data";
 import { getArtistInfo, stripHtml, getArtistImage } from "@/lib/lastfm";
-import TrackCard from "@/components/TrackCard";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -12,8 +11,6 @@ export default async function ArtistPage({ params }: Props) {
   const { id } = await params;
   const artist = getArtistById(id);
   if (!artist) notFound();
-
-  const artistTracks = getTracksByArtistId(id);
 
   // Enrich with Last.fm data (graceful fallback if unavailable)
   const lfmArtist = await getArtistInfo(artist.name).catch(() => null);
@@ -82,10 +79,6 @@ export default async function ArtistPage({ params }: Props) {
               </div>
             )}
             <div>
-              <div className="text-xl font-black text-white">{artistTracks.length}</div>
-              <div className="text-xs text-gray-500">Tracks</div>
-            </div>
-            <div>
               <div className="text-xl font-black text-white">{artist.yearActive}</div>
               <div className="text-xs text-gray-500">Since</div>
             </div>
@@ -95,7 +88,7 @@ export default async function ArtistPage({ params }: Props) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* About */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-2">
           <div className="bg-[#13131f] border border-white/5 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-white text-sm uppercase tracking-wider">About</h2>
@@ -158,20 +151,17 @@ export default async function ArtistPage({ params }: Props) {
           </div>
         </div>
 
-        {/* Tracks */}
-        <div className="lg:col-span-2">
-          <h2 className="font-bold text-white text-sm uppercase tracking-wider mb-3">
-            Tracks ({artistTracks.length})
-          </h2>
-          {artistTracks.length === 0 ? (
-            <p className="text-gray-500 text-sm">No tracks yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {artistTracks.map((track) => (
-                <TrackCard key={track.id} track={track} />
-              ))}
-            </div>
-          )}
+        {/* Find tracks in feed */}
+        <div className="lg:col-span-1">
+          <div className="bg-[#13131f] border border-white/5 rounded-xl p-5 text-center">
+            <svg className="w-8 h-8 text-orange-400/50 mx-auto mb-2" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+            </svg>
+            <p className="text-sm text-gray-500">
+              Find tracks by {artist.name} in the{" "}
+              <a href="/" className="text-orange-400 hover:underline">feed</a>
+            </p>
+          </div>
         </div>
       </div>
     </div>

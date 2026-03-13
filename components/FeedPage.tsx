@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { artists, formatNumber, seedTrackDiscussionPosts, seedCommunityPosts, SEED_TRACK_POST_IDS } from "@/lib/data";
+import { artists, formatNumber } from "@/lib/data";
 import { Genre, SubGenre, PostCategory, FeedItem, TrackDiscussionPost, CommunityPost, SerializedAlbumGroup } from "@/lib/types";
 import { useFeed } from "@/lib/FeedContext";
 import TrackDiscussionCard from "@/components/TrackDiscussionCard";
@@ -44,16 +44,13 @@ export default function FeedPage({ serverTrackPosts, serverAlbumGroups, cacheAge
     setSelectedCategories([]);
   }
 
-  // Build the unified post list:
-  // 1. User-created posts from context (strip out seed track posts since serverTrackPosts replaces them)
-  // 2. Server-fetched Last.fm track posts (or seed fallback if API is unavailable)
-  // 3. Seed community posts are part of contextPosts and flow through untouched
+  // contextPosts = seed community posts + any user-created posts added via modal
+  // serverTrackPosts = Last.fm standalone tracks from build-time cache
   const allPosts: FeedItem[] = useMemo(() => {
-    const userCreatedPosts = contextPosts.filter((p) => !SEED_TRACK_POST_IDS.has(p.id));
-    return [...userCreatedPosts, ...serverTrackPosts];
+    return [...contextPosts, ...serverTrackPosts];
   }, [contextPosts, serverTrackPosts]);
 
-  const fromLastFm = serverTrackPosts !== seedTrackDiscussionPosts && serverTrackPosts.length > 0;
+  const fromLastFm = serverTrackPosts.length > 0;
 
   const filteredPosts = useMemo(() => {
     let result = [...allPosts];
