@@ -84,6 +84,42 @@ export interface TrackDiscussionPost {
   // Last.fm enrichment (present when sourced from Last.fm API)
   lastFmUrl?: string;
   lastFmListeners?: number;
+  // YouTube enrichment
+  ytData?: YtData | null;
+}
+
+// ── YouTube enrichment ────────────────────────────────────────────────────────
+
+export interface YtData {
+  viewCount: number | null;
+  videoId: string | null;
+  label: string | null; // "🎬 YT Views" | "🎵 YT Audio Views" | "▶️ YT Views"
+}
+
+// ── Album groups (serialized for client components) ───────────────────────────
+
+export interface SerializedAlbumTrack {
+  id: string;           // lfm-* post id for linking
+  title: string;
+  artistName: string;   // for /tracks/[id]?artist=...&track=... links
+  duration: string;
+  playcount: number;
+  ytViewCount: number | null;
+  ytLabel: string | null;
+  isTopTrack: boolean;
+}
+
+export interface SerializedAlbumGroup {
+  releaseId: string;
+  releaseTitle: string;
+  releaseType: "Album" | "EP" | "Mixtape" | "Single";
+  releaseYear: number | null;
+  artistName: string;
+  releaseTrackCount: number; // total tracks on the MusicBrainz release
+  topTrack: string;          // title of highest-playcount track
+  totalPlaycount: number;    // sum of all feed track playcounts
+  genre: Genre;
+  tracks: SerializedAlbumTrack[]; // feed tracks sorted by playcount desc
 }
 
 export interface CommunityPost {

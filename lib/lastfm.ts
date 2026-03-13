@@ -1,5 +1,6 @@
-import { TrackDiscussionPost, Genre } from "./types";
+import { TrackDiscussionPost, Genre, YtData, SerializedAlbumGroup, SerializedAlbumTrack } from "./types";
 import { MbReleaseData, searchRelease, delay } from "./musicbrainz";
+import { getYouTubeViews, getYtLabel } from "./youtube";
 
 const BASE = "http://ws.audioscrobbler.com/2.0/";
 
@@ -62,6 +63,8 @@ export interface EnrichedLfmTrack {
   url: string;
   duration: string;     // formatted "m:ss"
   mbData: MbReleaseData | null; // MusicBrainz release info (null = unmatched)
+  ytData: YtData | null;        // YouTube view count enrichment
+  genre: Genre;                 // inferred from tags
 }
 
 /** A release (Album/EP/Mixtape) with 2+ tracks present in the feed */
@@ -81,6 +84,7 @@ export interface DesiHipHopData {
   tracks: EnrichedLfmTrack[];          // all 20 tracks (for feed, ordered by playcount)
   standaloneTracks: EnrichedLfmTrack[]; // singles + tracks whose release has <2 entries in feed
   albumGroups: AlbumGroup[];           // releases with 2+ tracks in the feed
+  serializedAlbumGroups: SerializedAlbumGroup[]; // client-safe serialized form
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -309,6 +313,8 @@ export async function getDesiHipHopTracks(): Promise<DesiHipHopData> {
         url: info?.url ?? track.url,
         duration,
         mbData: null as MbReleaseData | null, // filled in Phase 4
+        ytData: null as YtData | null,        // filled in Phase 5
+        genre: inferGenre([...tags, ...sourceTags]),
       } satisfies EnrichedLfmTrack;
     })
   );
@@ -324,7 +330,23 @@ export async function getDesiHipHopTracks(): Promise<DesiHipHopData> {
     );
   }
 
-  // ── Phase 5: group by releaseId ───────────────────────────────────────────
+  // ── Phase 5: enrich with YouTube view counts (sequential, skip if cached) ─
+  const YT_DELAY_MS = 200;
+  for (let i = 0; i < top20.length; i++) {
+    const t0 = Date.now();
+    const ytResult = await getYouTubeViews(top20[i].artistName, top20[i].title).catch(() => null);
+    if (ytResult) {
+      top20[i].ytData = {
+        viewCount: ytResult.viewCount,
+        videoId: ytResult.videoId,
+        label: getYtLabel(ytResult),
+      };
+    }
+    const elapsed = Date.now() - t0;
+    if (i < top20.length - 1 && elapsed > 100) await delay(YT_DELAY_MS);
+  }
+
+  // ── Phase 6: group by releaseId ───────────────────────────────────────────
   const releaseMap = new Map<string, EnrichedLfmTrack[]>();
   for (const track of top20) {
     if (!track.mbData) continue;
@@ -360,23 +382,51 @@ export async function getDesiHipHopTracks(): Promise<DesiHipHopData> {
     (t) => !t.mbData || !albumReleasIds.has(t.mbData.releaseId)
   );
 
+  // ── Serialize album groups for client components ───────────────────────────
+  const serializedAlbumGroups: SerializedAlbumGroup[] = albumGroups.map((g) => {
+    const sorted = [...g.tracks].sort((a, b) => b.playcount - a.playcount);
+    const topTitle = sorted[0]?.title ?? "";
+    const serializedTracks: SerializedAlbumTrack[] = sorted.map((t) => ({
+      id: t.id,
+      title: t.title,
+      artistName: t.artistName,
+      duration: t.duration,
+      playcount: t.playcount,
+      ytViewCount: t.ytData?.viewCount ?? null,
+      ytLabel: t.ytData?.label ?? null,
+      isTopTrack: t.title === topTitle,
+    }));
+    return {
+      releaseId: g.releaseId,
+      releaseTitle: g.releaseTitle,
+      releaseType: g.releaseType,
+      releaseYear: g.releaseYear,
+      artistName: g.artistName,
+      releaseTrackCount: g.trackCount,
+      topTrack: g.topTrack,
+      totalPlaycount: sorted.reduce((sum, t) => sum + t.playcount, 0),
+      genre: sorted[0]?.genre ?? "Gully Rap",
+      tracks: serializedTracks,
+    };
+  });
+
   // ── Sanity check log ──────────────────────────────────────────────────────
-  const enrichedCount = top20.filter((t) => t.mbData !== null).length;
-  const unmatchedCount = top20.length - enrichedCount;
+  const mbEnrichedCount = top20.filter((t) => t.mbData !== null).length;
+  const unmatchedCount = top20.length - mbEnrichedCount;
+  const ytEnrichedCount = top20.filter((t) => t.ytData !== null).length;
   const groupLines = albumGroups.map(
     (g) => `  ${g.artistName} - ${g.releaseTitle} (${g.releaseType}, ${g.tracks.length} tracks)`
   );
   console.log(
     [
-      `MusicBrainz enrichment complete:`,
-      ` ${enrichedCount} tracks enriched with release data`,
-      ` ${unmatchedCount} tracks unmatched (showing as singles)`,
-      ` ${albumGroups.length} album/EP/mixtape group(s) formed`,
-      albumGroups.length > 0 ? `Groups:\n${groupLines.join("\n")}` : ` Groups: none`,
+      `MusicBrainz enrichment: ${mbEnrichedCount} matched, ${unmatchedCount} unmatched`,
+      `YouTube enrichment: ${ytEnrichedCount}/${top20.length} tracks with view counts`,
+      `Album groups: ${albumGroups.length} formed`,
+      albumGroups.length > 0 ? `Groups:\n${groupLines.join("\n")}` : `Groups: none`,
     ].join("\n")
   );
 
-  return { tracks: top20, standaloneTracks, albumGroups };
+  return { tracks: top20, standaloneTracks, albumGroups, serializedAlbumGroups };
 }
 
 // ── Converter: EnrichedLfmTrack → feed posts ──────────────────────────────────
@@ -435,7 +485,7 @@ export function lfmTracksToFeedPosts(lfmTracks: EnrichedLfmTrack[]): TrackDiscus
       trackId: undefined,
       trackTitle: t.title,
       artistName: t.artistName,
-      genre: inferGenre([...t.tags, ...t.sourceTags]),
+      genre: t.genre,
       coverColor: palette.coverColor,
       coverAccent: palette.coverAccent,
       duration: t.duration,
@@ -448,6 +498,7 @@ export function lfmTracksToFeedPosts(lfmTracks: EnrichedLfmTrack[]): TrackDiscus
       postedAt: new Date().toISOString(),
       lastFmUrl: t.url,
       lastFmListeners: t.listeners,
+      ytData: t.ytData,
     };
   });
 }

@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { artists, formatNumber, seedTrackDiscussionPosts, seedCommunityPosts, SEED_TRACK_POST_IDS } from "@/lib/data";
-import { Genre, SubGenre, PostCategory, FeedItem, TrackDiscussionPost, CommunityPost } from "@/lib/types";
+import { Genre, SubGenre, PostCategory, FeedItem, TrackDiscussionPost, CommunityPost, SerializedAlbumGroup } from "@/lib/types";
 import { useFeed } from "@/lib/FeedContext";
 import TrackDiscussionCard from "@/components/TrackDiscussionCard";
 import CommunityPostCard from "@/components/CommunityPostCard";
+import AlbumCard from "@/components/AlbumCard";
 import FeedFilter, { PostTypeTab } from "@/components/FeedFilter";
 import Link from "next/link";
 
@@ -14,9 +15,10 @@ type SortOption = (typeof SORT_OPTIONS)[number];
 
 interface Props {
   serverTrackPosts: TrackDiscussionPost[];
+  serverAlbumGroups: SerializedAlbumGroup[];
 }
 
-export default function FeedPage({ serverTrackPosts }: Props) {
+export default function FeedPage({ serverTrackPosts, serverAlbumGroups }: Props) {
   const { posts: contextPosts } = useFeed();
 
   const [postTypeTab, setPostTypeTab] = useState<PostTypeTab>("all");
@@ -107,6 +109,12 @@ export default function FeedPage({ serverTrackPosts }: Props) {
 
     return [...pinned, ...rest];
   }, [allPosts, postTypeTab, selectedGenres, selectedSubGenres, selectedCategories, sort]);
+
+  const filteredAlbumGroups = useMemo(() => {
+    if (postTypeTab === "community") return [];
+    if (selectedGenres.length === 0) return serverAlbumGroups;
+    return serverAlbumGroups.filter((g) => selectedGenres.includes(g.genre));
+  }, [serverAlbumGroups, postTypeTab, selectedGenres]);
 
   const topArtists = [...artists].sort((a, b) => b.followers - a.followers).slice(0, 4);
   const activeFiltersCount =
@@ -219,6 +227,20 @@ export default function FeedPage({ serverTrackPosts }: Props) {
                   <button onClick={() => toggleCategory(c)} className="hover:text-white ml-0.5">×</button>
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* Album groups */}
+          {filteredAlbumGroups.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-xs font-semibold text-blue-400/70 uppercase tracking-wider mb-2">
+                💿 Albums & EPs in Feed
+              </h2>
+              <div className="space-y-3">
+                {filteredAlbumGroups.map((group) => (
+                  <AlbumCard key={group.releaseId} group={group} />
+                ))}
+              </div>
             </div>
           )}
 
