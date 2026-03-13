@@ -48,6 +48,20 @@ export interface LfmArtistInfo {
   bio: { links: unknown; published: string; summary: string; content: string };
 }
 
+/** Enriched track returned by getDesiHipHopTracks */
+export interface EnrichedLfmTrack {
+  id: string;          // "lfm-krsna-god-keyboard"
+  title: string;       // original title from Last.fm
+  artistName: string;  // original artist name from Last.fm
+  playcount: number;
+  listeners: number;
+  tags: string[];      // from track.getInfo toptags
+  coverArt: string | null;
+  sourceTags: string[]; // which DHH tags this track was found under
+  url: string;
+  duration: string;    // formatted "m:ss"
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Strip HTML tags and Last.fm read-more links from wiki/bio text */
@@ -93,6 +107,29 @@ export function getArtistImage(
   return "";
 }
 
+/**
+ * Normalize a track/artist name for dedup comparison:
+ * "Kr$na" → "krsna", "Jungli Sher (feat. MC Altaf)" → "jungli sher"
+ */
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\$/, "s")                      // Kr$na → krsna
+    .replace(/\bfeat\.?\s+[^)]+/gi, "")      // feat. X or feat X
+    .replace(/\bft\.?\s+[^)]+/gi, "")        // ft. X or ft X
+    .replace(/\([^)]*\)/g, "")               // remove anything in ()
+    .replace(/[^a-z0-9\s]/g, "")             // strip remaining special chars
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Create a stable ID from artist + title */
+function makeId(artist: string, title: string): string {
+  const a = normalize(artist).replace(/\s+/g, "-");
+  const t = normalize(title).replace(/\s+/g, "-");
+  return `lfm-${a}-${t}`.replace(/-{2,}/g, "-").replace(/-$/, "");
+}
+
 // ── Core fetch wrapper ─────────────────────────────────────────────────────────
 
 async function lfmFetch<T>(params: Record<string, string>): Promise<T | null> {
@@ -122,7 +159,7 @@ async function lfmFetch<T>(params: Record<string, string>): Promise<T | null> {
 
 // ── Public API functions ───────────────────────────────────────────────────────
 
-export async function getTagTopTracks(tag: string, limit = 15): Promise<LfmTagTrack[]> {
+export async function getTagTopTracks(tag: string, limit = 10): Promise<LfmTagTrack[]> {
   const data = await lfmFetch<{ tracks: { track: LfmTagTrack[] } }>({
     method: "tag.getTopTracks",
     tag,
@@ -155,27 +192,111 @@ export async function getArtistInfo(artist: string): Promise<LfmArtistInfo | nul
 
 // ── Multi-tag fetch for home feed ─────────────────────────────────────────────
 
-const DESI_TAGS = ["desi hip hop", "indian hip hop", "hindi rap", "punjabi hip hop"] as const;
+const DESI_TAGS = [
+  "desi hip hop",
+  "indian hip hop",
+  "hindi rap",
+  "gully rap",
+  "punjabi hip hop",
+  "desi rap",
+  "indian rap",
+  "mumbai rap",
+  "delhi rap",
+  "tamil rap",
+  "bengali rap",
+  "trap hindi",
+  "underground indian hip hop",
+  "desi trap",
+] as const;
 
-export async function getDesiHipHopTracks(): Promise<LfmTagTrack[]> {
-  const results = await Promise.all(DESI_TAGS.map((tag) => getTagTopTracks(tag, 10)));
+// How many deduped candidates to enrich with track.getInfo before final sort
+const ENRICH_LIMIT = 40;
 
-  // Deduplicate across tags by "artist::track" key
-  const seen = new Set<string>();
-  const deduped: LfmTagTrack[] = [];
-  for (const tagTracks of results) {
-    for (const t of tagTracks) {
-      const key = `${t.artist.name}::${t.name}`.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(t);
+export async function getDesiHipHopTracks(): Promise<EnrichedLfmTrack[]> {
+  // Phase 1: fetch all tag track lists in parallel (14 API calls)
+  const tagResults = await Promise.all(
+    DESI_TAGS.map((tag) =>
+      getTagTopTracks(tag, 10)
+        .then((tracks) => ({ tag, tracks }))
+        .catch(() => ({ tag, tracks: [] as LfmTagTrack[] }))
+    )
+  );
+
+  const rawCount = tagResults.reduce((sum, r) => sum + r.tracks.length, 0);
+
+  // Phase 2: deduplicate by normalized key
+  // When a track appears in multiple tags, keep the instance with the lowest
+  // rank number (rank 1 = top of that tag = likely highest plays) as the
+  // representative. Collect all sourceTags regardless.
+  const groups = new Map<
+    string,
+    { track: LfmTagTrack; sourceTags: string[]; bestRank: number }
+  >();
+
+  for (const { tag, tracks } of tagResults) {
+    for (const t of tracks) {
+      const key = normalize(t.artist.name) + "|" + normalize(t.name);
+      const rank = parseInt(t["@attr"].rank, 10) || 999;
+      const existing = groups.get(key);
+
+      if (!existing) {
+        groups.set(key, { track: t, sourceTags: [tag], bestRank: rank });
+      } else {
+        if (!existing.sourceTags.includes(tag)) existing.sourceTags.push(tag);
+        if (rank < existing.bestRank) {
+          existing.track = t;
+          existing.bestRank = rank;
+        }
       }
     }
   }
-  return deduped.slice(0, 20);
+
+  const uniqueCount = groups.size;
+  console.log(
+    `Last.fm fetch complete: ${rawCount} raw tracks → ${uniqueCount} unique tracks after dedup (${rawCount - uniqueCount} duplicates removed)`
+  );
+
+  // Phase 3: take top candidates by rank for enrichment (limit API calls)
+  const candidates = Array.from(groups.values())
+    .sort((a, b) => a.bestRank - b.bestRank)
+    .slice(0, ENRICH_LIMIT);
+
+  // Phase 4: enrich with track.getInfo to get actual playcount, listeners, tags, album art
+  const enriched = await Promise.all(
+    candidates.map(async ({ track, sourceTags }) => {
+      const info = await getTrackInfo(track.artist.name, track.name).catch(() => null);
+
+      const playcount = info?.playcount ? parseInt(info.playcount, 10) : 0;
+      const listeners = info?.listeners ? parseInt(info.listeners, 10) : 0;
+      const tags = info?.toptags?.tag?.map((t) => t.name).filter(Boolean) ?? [];
+      const coverArt =
+        (info?.album?.image ? getArtistImage(info.album.image) : "") ||
+        (track.image?.length ? getArtistImage(track.image) : "") ||
+        null;
+      const duration = info?.duration
+        ? formatDurationMs(info.duration)
+        : formatDurationSecs(track.duration);
+
+      return {
+        id: makeId(track.artist.name, track.name),
+        title: info?.name ?? track.name,
+        artistName: info?.artist.name ?? track.artist.name,
+        playcount,
+        listeners,
+        tags,
+        coverArt: coverArt || null,
+        sourceTags,
+        url: info?.url ?? track.url,
+        duration,
+      } satisfies EnrichedLfmTrack;
+    })
+  );
+
+  // Phase 5: sort by playcount descending, return top 20
+  return enriched.sort((a, b) => b.playcount - a.playcount).slice(0, 20);
 }
 
-// ── Converter: Last.fm tracks → feed posts ─────────────────────────────────────
+// ── Converter: EnrichedLfmTrack → feed posts ──────────────────────────────────
 
 const COVER_PALETTE = [
   { coverColor: "from-orange-900 to-red-950", coverAccent: "bg-orange-500" },
@@ -200,10 +321,14 @@ const TAG_GENRE_MAP: Record<string, Genre> = {
   bhangra: "Bhangra Fusion",
   "bhangra fusion": "Bhangra Fusion",
   trap: "Trap",
+  "desi trap": "Trap",
+  "trap hindi": "Trap",
   "hip-hop": "Gully Rap",
   "hip hop": "Gully Rap",
   rap: "Gully Rap",
   "tamil hip hop": "Tamil Hip Hop",
+  "tamil rap": "Tamil Hip Hop",
+  "bengali rap": "Bengali Hip Hop",
   sufi: "Sufi Rap",
   "lo-fi": "Lo-fi Desi",
   "old school hip hop": "Old School",
@@ -217,33 +342,29 @@ function inferGenre(tagNames: string[]): Genre {
   return "Gully Rap";
 }
 
-export function lfmTracksToFeedPosts(lfmTracks: LfmTagTrack[]): TrackDiscussionPost[] {
+export function lfmTracksToFeedPosts(lfmTracks: EnrichedLfmTrack[]): TrackDiscussionPost[] {
   return lfmTracks.map((t, i) => {
     const palette = COVER_PALETTE[i % COVER_PALETTE.length];
-    // Stable ID based on artist+track name
-    const id = `lfm-${t.artist.name}-${t.name}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
 
     return {
-      id,
+      id: t.id,
       type: "track" as const,
       trackId: undefined,
-      trackTitle: t.name,
-      artistName: t.artist.name,
-      genre: inferGenre([]),
+      trackTitle: t.title,
+      artistName: t.artistName,
+      genre: inferGenre([...t.tags, ...t.sourceTags]),
       coverColor: palette.coverColor,
       coverAccent: palette.coverAccent,
-      duration: formatDurationSecs(t.duration),
+      duration: t.duration,
       userText: "",
       author: "Last.fm",
       authorColor: "bg-red-600",
       likes: 0,
       commentCount: 0,
-      plays: 0,
+      plays: t.playcount,
       postedAt: new Date().toISOString(),
       lastFmUrl: t.url,
+      lastFmListeners: t.listeners,
     };
   });
 }
